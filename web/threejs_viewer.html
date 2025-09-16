@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Molecule Viewer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #666;
+            z-index: 1000;
+        }
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #87CEEB;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #ff6b6b;
+            display: none;
+            z-index: 1000;
+        }
+        #info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            max-width: 250px;
+            z-index: 1001;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="loading">
+            <div class="loading-spinner"></div>
+            <p>3Dモデルを読み込み中...</p>
+        </div>
+        <div id="error">
+            <p>3Dモデルの読み込みに失敗しました</p>
+        </div>
+    </div>
+
+    <!-- Three.js ライブラリ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        let scene, camera, renderer, controls, model;
+        let moleculeName = 'Unknown Molecule';
+
+        // URLパラメータから分子情報を取得
+        const urlParams = new URLSearchParams(window.location.search);
+        const glbUrl = urlParams.get('glbUrl');
+        moleculeName = urlParams.get('moleculeName') || moleculeName;
+
+        function init() {
+            // シーンの作成
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf5f5f5);
+
+            // カメラの作成
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 5);
+
+            // レンダラーの作成
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1;
+
+            document.getElementById('container').appendChild(renderer.domElement);
+
+            // コントロールの設定
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.screenSpacePanning = false;
+            controls.minDistance = 1;
+            controls.maxDistance = 100;
+            controls.autoRotate = false;
+            controls.autoRotateSpeed = 0;
+
+            // ライティングの設定
+            setupLighting();
+
+            // ウィンドウリサイズ対応
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function setupLighting() {
+            // 環境光
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            // 主要な方向光
+            const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight1.position.set(5, 5, 5);
+            directionalLight1.castShadow = true;
+            directionalLight1.shadow.mapSize.width = 1024;
+            directionalLight1.shadow.mapSize.height = 1024;
+            scene.add(directionalLight1);
+
+            // 補助光
+            const directionalLight2 = new THREE.DirectionalLight(0x87CEEB, 0.4);
+            directionalLight2.position.set(-5, -5, -5);
+            scene.add(directionalLight2);
+
+            // ポイントライト
+            const pointLight = new THREE.PointLight(0xffffff, 0.5);
+            pointLight.position.set(0, 10, 0);
+            scene.add(pointLight);
+        }
+
+        function loadModel(url) {
+            const loader = new THREE.GLTFLoader();
+
+            loader.load(
+                url,
+                function (gltf) {
+                    model = gltf.scene;
+
+                    // モデルのスケールと位置を調整
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+
+                    // モデルを中央に配置
+                    model.position.sub(center);
+
+                    // サイズを正規化（さらに大きく表示するために拡大率を増加）
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scale = 6 / maxDim; // 4から6に変更してさらに大きく表示
+                    model.scale.setScalar(scale);
+
+                    // マテリアルの設定と色調整
+                    model.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+
+                            // マテリアルの改善と色の調整
+                            if (child.material) {
+                                child.material.metalness = 0.1;
+                                child.material.roughness = 0.3;
+                                child.material.envMapIntensity = 1.0;
+
+                                // 原子の色を識別してUI色分けと合わせる
+                                const materialColor = child.material.color;
+                                if (materialColor) {
+                                    // 炭素（黒）
+                                    if (materialColor.r < 0.3 && materialColor.g < 0.3 && materialColor.b < 0.3) {
+                                        materialColor.setHex(0x000000); // 黒
+                                    }
+                                    // 酸素（赤）
+                                    else if (materialColor.r > 0.7 && materialColor.g < 0.3 && materialColor.b < 0.3) {
+                                        materialColor.setHex(0xFF0000); // 赤
+                                    }
+                                    // 窒素（青）
+                                    else if (materialColor.r < 0.3 && materialColor.g < 0.5 && materialColor.b > 0.7) {
+                                        materialColor.setHex(0x0066FF); // 青
+                                    }
+                                    // 水素（白/グレー）
+                                    else if (materialColor.r > 0.8 && materialColor.g > 0.8 && materialColor.b > 0.8) {
+                                        materialColor.setHex(0xFFFFFF); // 白
+                                    }
+                                    // マグネシウム（緑）
+                                    else if (materialColor.r < 0.3 && materialColor.g > 0.7 && materialColor.b < 0.3) {
+                                        materialColor.setHex(0x00FF00); // 緑
+                                    }
+                                    // 硫黄（黄色）
+                                    else if (materialColor.r > 0.8 && materialColor.g > 0.8 && materialColor.b < 0.3) {
+                                        materialColor.setHex(0xFFFF00); // 黄色
+                                    }
+                                    // リン（オレンジ）
+                                    else if (materialColor.r > 0.8 && materialColor.g > 0.4 && materialColor.b < 0.3) {
+                                        materialColor.setHex(0xFF8000); // オレンジ
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    scene.add(model);
+
+                    // カメラ位置を調整（さらに近づける）
+                    const distance = Math.max(2.5, maxDim * scale * 1.0); // さらに近づける
+                    camera.position.set(distance, distance * 0.5, distance);
+                    controls.target.copy(model.position);
+                    controls.update();
+
+                    // ローディング画面を非表示
+                    document.getElementById('loading').style.display = 'none';
+
+                    console.log('3D model loaded successfully');
+                },
+                function (progress) {
+                    console.log('Loading progress:', (progress.loaded / progress.total * 100) + '%');
+                },
+                function (error) {
+                    console.error('Error loading 3D model:', error);
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('error').style.display = 'block';
+                }
+            );
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // 初期化とモデル読み込み
+        init();
+
+        if (glbUrl) {
+            loadModel(glbUrl);
+        } else {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'block';
+            document.querySelector('#error p').textContent = 'GLBファイルのURLが指定されていません';
+        }
+
+        animate();
+
+        // Flutter からのメッセージを受信
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'loadModel') {
+                if (model) {
+                    scene.remove(model);
+                }
+                moleculeName = event.data.moleculeName || 'Unknown Molecule';
+                loadModel(event.data.glbUrl);
+            }
+        });
+    </script>
+</body>
+</html>
