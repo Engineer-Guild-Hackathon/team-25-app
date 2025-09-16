@@ -74,8 +74,8 @@ class HistoryItemWidget extends StatelessWidget {
       height: 80,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: item.imageFile != null
-            ? Image.file(item.imageFile!, fit: BoxFit.cover)
+        child: item.imageBytes != null
+            ? Image.memory(item.imageBytes!, fit: BoxFit.cover)
             : Container(
                 color: Colors.grey[200],
                 child: const Icon(Icons.image, size: 40, color: Colors.grey),

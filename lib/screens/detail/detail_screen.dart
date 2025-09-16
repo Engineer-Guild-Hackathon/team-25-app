@@ -65,9 +65,9 @@ class DetailScreen extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: item.imageFile != null
-            ? Image.file(
-                item.imageFile!,
+        child: item.imageBytes != null
+            ? Image.memory(
+                item.imageBytes!,
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) {
                   return Container(

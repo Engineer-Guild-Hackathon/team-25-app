@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:team_25_app/models/molecule.dart';
 
@@ -7,7 +6,8 @@ class HistoryItem {
   final DateTime viewedAt;
   final List<Molecule> molecules; // 推定分子一覧（3〜5）
   final Molecule? topMolecule; // ★ 最も信頼度の高い分子
-  final File? imageFile;
+  final Uint8List? imageBytes; // Web用画像データ
+  final String? fileName; // Web用ファイル名
   final bool isFavorite; // ★ お気に入り状態
   final String category; // ★ 物体のカテゴリ
 
@@ -15,7 +15,8 @@ class HistoryItem {
     required this.objectName,
     required this.viewedAt,
     required this.molecules,
-    required this.imageFile,
+    this.imageBytes,
+    this.fileName,
     required this.topMolecule, // ★ 追加
     this.isFavorite = false, // ★ デフォルトはfalse
     this.category = '', // ★ デフォルトは空文字
@@ -26,7 +27,8 @@ class HistoryItem {
     String? objectName,
     DateTime? viewedAt,
     List<Molecule>? molecules,
-    File? imageFile,
+    Uint8List? imageBytes,
+    String? fileName,
     Molecule? topMolecule,
     bool? isFavorite,
     String? category,
@@ -35,7 +37,8 @@ class HistoryItem {
       objectName: objectName ?? this.objectName,
       viewedAt: viewedAt ?? this.viewedAt,
       molecules: molecules ?? this.molecules,
-      imageFile: imageFile ?? this.imageFile,
+      imageBytes: imageBytes ?? this.imageBytes,
+      fileName: fileName ?? this.fileName,
       topMolecule: topMolecule ?? this.topMolecule,
       isFavorite: isFavorite ?? this.isFavorite,
       category: category ?? this.category,
@@ -84,7 +87,8 @@ class HistoryStore {
           description: '果糖',
           confidence: 0.92,
         ),
-        imageFile: null,
+        imageBytes: null,
+        fileName: null,
         isFavorite: true,
         category: '食品・果物',
       ),
@@ -114,7 +118,8 @@ class HistoryStore {
           description: '水分子',
           confidence: 0.99,
         ),
-        imageFile: null,
+        imageBytes: null,
+        fileName: null,
         isFavorite: false,
         category: '飲料・液体',
       ),
@@ -145,7 +150,8 @@ class HistoryStore {
           description: '食塩',
           confidence: 0.96,
         ),
-        imageFile: null,
+        imageBytes: null,
+        fileName: null,
         isFavorite: true,
         category: '調味料・食品添加物',
       ),
@@ -175,7 +181,8 @@ class HistoryStore {
           description: '有機酸',
           confidence: 0.94,
         ),
-        imageFile: null,
+        imageBytes: null,
+        fileName: null,
         isFavorite: false,
         category: '食品・果物',
       ),
@@ -206,7 +213,8 @@ class HistoryStore {
           description: 'アルカロイド',
           confidence: 0.91,
         ),
-        imageFile: null,
+        imageBytes: null,
+        fileName: null,
         isFavorite: true,
         category: '飲料・嗜好品',
       ),
@@ -236,7 +244,8 @@ class HistoryStore {
           description: '解熱鎮痛剤',
           confidence: 0.98,
         ),
-        imageFile: null,
+        imageBytes: null,
+        fileName: null,
         isFavorite: false,
         category: '医薬品・薬品',
       ),

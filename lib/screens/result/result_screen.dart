@@ -1,16 +1,16 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../models/detection_result.dart';
 import '../../models/molecule.dart';
 import '../model_viewer/model_viewer_screen.dart';
 
 class ResultScreen extends StatelessWidget {
-  final File imageFile;
+  final Uint8List? imageBytes;
   final DetectionResult detection;
 
   const ResultScreen({
     super.key,
-    required this.imageFile,
+    this.imageBytes,
     required this.detection,
   });
 
@@ -23,7 +23,8 @@ class ResultScreen extends StatelessWidget {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Image.file(imageFile, height: 200, fit: BoxFit.cover),
+          if (imageBytes != null)
+            Image.memory(imageBytes!, height: 200, fit: BoxFit.cover),
           Padding(
             padding: const EdgeInsets.all(12),
             child: Text(

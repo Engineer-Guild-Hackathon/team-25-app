@@ -1,7 +1,6 @@
-import 'dart:io';
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
-import 'package:path_provider/path_provider.dart';
 import '../../services/api_service.dart';
 
 class ModelViewerScreen extends StatefulWidget {
@@ -32,26 +31,25 @@ class _ModelViewerScreenState extends State<ModelViewerScreen> {
 
   Future<void> _loadModel() async {
     try {
-      print('ModelViewerScreen: Starting to convert SDF to GLB');
-      print('ModelViewerScreen: SDF Data length: ${widget.sdfData.length}');
-      
+      debugPrint('ModelViewerScreen: Starting to convert SDF to GLB');
+      debugPrint('ModelViewerScreen: SDF Data length: ${widget.sdfData.length}');
+
       // SDFデータをGLBに変換
       final glbData = await ApiService.convertSdfToGlb(widget.sdfData);
-      print('ModelViewerScreen: GLB Data received, size: ${glbData.length} bytes');
-      
-      // GLBファイルを一時ディレクトリに保存
-      final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/molecule_${DateTime.now().millisecondsSinceEpoch}.glb');
-      await file.writeAsBytes(glbData);
-      
+      debugPrint('ModelViewerScreen: GLB Data received, size: ${glbData.length} bytes');
+
+      // Web用: Blob URLを作成
+      final blob = html.Blob([glbData]);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+
       if (mounted) {
         setState(() {
-          _glbUrl = file.path;
+          _glbUrl = url;
           _isLoading = false;
         });
       }
     } catch (e) {
-      print('ModelViewerScreen: Error loading model: $e');
+      debugPrint('ModelViewerScreen: Error loading model: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -130,10 +128,10 @@ class _ModelViewerScreenState extends State<ModelViewerScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                               decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
-                                  color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
                                 ),
                               ),
                               child: Text(
@@ -196,13 +194,9 @@ class _ModelViewerScreenState extends State<ModelViewerScreen> {
 
   @override
   void dispose() {
-    // 一時ファイルをクリーンアップ
+    // Web用: Blob URLをクリーンアップ
     if (_glbUrl != null) {
-      try {
-        File(_glbUrl!).deleteSync();
-      } catch (e) {
-        // エラーは無視（ファイルが既に削除されている可能性）
-      }
+      html.Url.revokeObjectUrl(_glbUrl!);
     }
     super.dispose();
   }

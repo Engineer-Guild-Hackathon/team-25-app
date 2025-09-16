@@ -1,9 +1,9 @@
-import 'dart:io';
+import 'dart:typed_data';
+import 'dart:html' as html;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:team_25_app/screens/collection/widgets/history_list.dart';
 import 'package:team_25_app/screens/collection/widgets/history_tab_bar.dart';
 import 'package:team_25_app/screens/services/history_store.dart';
@@ -50,154 +50,65 @@ class _HistoryScreenState extends State<HistoryScreen>
     HistoryStore.setFilter(filter);
   }
 
-  Future<void> _pickFrom(ImageSource source) async {
+  Future<void> _pickFromGallery() async {
     if (_isLoading) return;
 
-    debugPrint('Starting image picker with source: $source');
+    debugPrint('Starting web image picker');
 
-    // シミュレーター環境での対応
-    if (kDebugMode && Platform.isIOS) {
-      // 利用可能なテスト画像を探す（有機化合物系を優先）
-      final List<String> testImagePaths = [
-        '/Users/ryousei/programing/hackathon/team-25-app/test_images/coffee_beans.jpg',  // 実際のコーヒー画像（カフェイン）
-      ];
+    // Web用のファイル選択
+    final uploadInput = html.FileUploadInputElement();
+    uploadInput.accept = 'image/*';
+    uploadInput.click();
 
-      final List<File> availableImages = [];
-      for (final path in testImagePaths) {
-        final file = File(path);
-        if (await file.exists()) {
-          availableImages.add(file);
-        }
-      }
-
-      if (availableImages.isNotEmpty) {
-        if (!mounted) return;
-        final selectedFile = await showDialog<File>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('🔧 開発用画像選択'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'iOSシミュレーターではImagePickerが不安定です。\n開発用テスト画像を選択してください：',
-                ),
-                const SizedBox(height: 16),
-                ...availableImages.map(
-                  (file) => ListTile(
-                    title: Text(file.path.split('/').last),
-                    subtitle: Text(
-                      file.path.split('/').length > 1 
-                        ? file.path.split('/').skip(file.path.split('/').length - 2).join('/')
-                        : file.path,
-                    ),
-                    onTap: () => Navigator.of(context).pop(file),
-                  ),
-                ),
-                const Divider(),
-                ListTile(
-                  leading: const Icon(Icons.warning, color: Colors.orange),
-                  title: const Text('ImagePickerを試行'),
-                  subtitle: const Text('フリーズするかもしれません'),
-                  onTap: () => Navigator.of(context).pop(null),
-                ),
-              ],
-            ),
-          ),
-        );
-
-        if (selectedFile != null) {
-          debugPrint('Using selected test image: ${selectedFile.path}');
-          await _processTestImage(selectedFile);
-          return;
-        }
-        // selectedFile が null の場合は ImagePicker を試行
-      } else {
-        // テスト画像が見つからない場合
-        if (!mounted) return;
-        final proceed = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('⚠️ シミュレーター制限'),
-            content: const Text(
-              'iOSシミュレーターでImagePickerは不安定です。\n'
-              '実機でのテストを推奨しますが、試行しますか？',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('キャンセル'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('試行する'),
-              ),
-            ],
-          ),
-        );
-
-        if (proceed != true) return;
-      }
+    await uploadInput.onChange.first;
+    if (uploadInput.files?.isEmpty ?? true) {
+      debugPrint('No file selected');
+      return;
     }
 
-    // ImagePickerを詳細設定で使用
-    final picker = ImagePicker();
-    XFile? picked;
+    final file = uploadInput.files!.first;
+    final reader = html.FileReader();
+    reader.readAsArrayBuffer(file);
+    await reader.onLoadEnd.first;
 
+    final bytes = reader.result as Uint8List;
+    await _processWebImage(bytes, file.type ?? 'image/jpeg', file.name);
+  }
+
+  Future<void> _pickFromCamera() async {
+    if (_isLoading) return;
+
+    debugPrint('Starting web camera capture');
+
+    // Web用のカメラキャプチャ（MediaDevices API）
     try {
-      debugPrint('Opening image picker...');
-      
-      // シンプルな設定でImagePickerを呼び出し（記事の推奨通り）
-      picked = await picker.pickImage(
-        source: source,
-        imageQuality: 80,
+      // カメラアクセスのUIを表示
+      await showDialog(
+        context: context,
+        builder: (context) => _WebCameraDialog(
+          onImageCaptured: (Uint8List bytes) {
+            Navigator.of(context).pop();
+            _processWebImage(bytes, 'image/png', 'camera_capture.png');
+          },
+        ),
       );
-      
-      debugPrint('Image picker returned: ${picked?.path}');
     } catch (e) {
-      debugPrint('Image picker error: $e');
-      
-      // 権限エラーの場合の詳細情報を表示
-      String errorMessage = 'エラー: $e';
-      if (e.toString().contains('permission') || e.toString().contains('denied')) {
-        errorMessage = '写真ライブラリへのアクセス権限が必要です。設定から権限を許可してください。';
-      } else if (e.toString().contains('camera')) {
-        errorMessage = 'カメラへのアクセス権限が必要です。設定から権限を許可してください。';
-      }
-      
+      debugPrint('Camera error: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMessage),
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: '再試行',
-            onPressed: () => _pickFrom(source),
-          ),
-        ),
+        SnackBar(content: Text('カメラアクセスエラー: $e')),
       );
-      return;
     }
-
-    if (picked == null) {
-      debugPrint('No image selected');
-      return;
-    }
-
-    // 実際の画像処理を行う
-    await _processPickedImage(picked);
   }
 
-  Future<void> _processTestImage(File testFile) async {
+  Future<void> _processWebImage(Uint8List imageBytes, String mimeType, String fileName) async {
     setState(() => _isLoading = true);
 
     try {
-      final Uint8List imageBytes = await testFile.readAsBytes();
-
-      debugPrint('Calling API with test image...');
+      debugPrint('Calling API with web image...');
       final DetectionResult result = await ApiService.analyzeImage(
         imageBytes,
-        'image/jpeg',
+        mimeType,
       );
       debugPrint('API response received: ${result.objectName}');
 
@@ -206,7 +117,8 @@ class _HistoryScreenState extends State<HistoryScreen>
           objectName: result.objectName,
           viewedAt: DateTime.now(),
           molecules: result.molecules,
-          imageFile: testFile,
+          imageBytes: imageBytes,
+          fileName: fileName,
           topMolecule: result.molecules.isNotEmpty
               ? result.molecules.first
               : null,
@@ -215,57 +127,11 @@ class _HistoryScreenState extends State<HistoryScreen>
 
       if (!mounted) return;
 
-      // 結果画面へ
+      // 結果画面へ（mainブランチと同じUIを使用）
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) =>
-              ResultScreen(imageFile: testFile, detection: result),
-        ),
-      );
-    } catch (e) {
-      debugPrint('API error: $e');
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('解析に失敗しました: $e')));
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _processPickedImage(XFile pickedFile) async {
-    setState(() => _isLoading = true);
-
-    try {
-      final Uint8List imageBytes = await pickedFile.readAsBytes();
-      final File imageFile = File(pickedFile.path);
-
-      debugPrint('Calling API with picked image...');
-      final DetectionResult result = await ApiService.analyzeImage(
-        imageBytes,
-        pickedFile.mimeType ?? 'image/jpeg',
-      );
-      debugPrint('API response received: ${result.objectName}');
-
-      HistoryStore.add(
-        HistoryItem(
-          objectName: result.objectName,
-          viewedAt: DateTime.now(),
-          molecules: result.molecules,
-          imageFile: imageFile,
-          topMolecule: result.molecules.isNotEmpty
-              ? result.molecules.first
-              : null,
-        ),
-      );
-
-      if (!mounted) return;
-
-      // 結果画面へ
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) =>
-              ResultScreen(imageFile: imageFile, detection: result),
+              ResultScreen(imageBytes: imageBytes, detection: result),
         ),
       );
     } catch (e) {
@@ -302,14 +168,14 @@ class _HistoryScreenState extends State<HistoryScreen>
                 // アルバム選択用FAB
                 FloatingActionButton(
                   heroTag: "album",
-                  onPressed: () => _pickFrom(ImageSource.gallery),
+                  onPressed: _pickFromGallery,
                   child: const Icon(Icons.photo_library),
                 ),
                 const SizedBox(height: 12),
                 // カメラ撮影用FAB
                 FloatingActionButton(
                   heroTag: "camera",
-                  onPressed: () => _pickFrom(ImageSource.camera),
+                  onPressed: _pickFromCamera,
                   child: const Icon(Icons.camera_alt),
                 ),
               ],
@@ -336,6 +202,114 @@ class _HistoryScreenState extends State<HistoryScreen>
           ],
         ),
       ),
+    );
+  }
+}
+
+// Web用カメラダイアログ
+class _WebCameraDialog extends StatefulWidget {
+  final Function(Uint8List) onImageCaptured;
+
+  const _WebCameraDialog({required this.onImageCaptured});
+
+  @override
+  State<_WebCameraDialog> createState() => _WebCameraDialogState();
+}
+
+class _WebCameraDialogState extends State<_WebCameraDialog> {
+  html.VideoElement? _videoElement;
+  html.MediaStream? _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _initCamera();
+  }
+
+  Future<void> _initCamera() async {
+    try {
+      final mediaStream = await html.window.navigator.mediaDevices!
+          .getUserMedia({'video': true});
+
+      _videoElement = html.VideoElement()
+        ..srcObject = mediaStream
+        ..autoplay = true
+        ..style.width = '100%'
+        ..style.height = '100%';
+
+      _stream = mediaStream;
+
+      // ビデオ要素をDOMに追加
+      html.document.body!.append(_videoElement!);
+
+      setState(() {});
+    } catch (e) {
+      debugPrint('Camera init error: $e');
+    }
+  }
+
+  Future<void> _captureImage() async {
+    if (_videoElement == null) return;
+
+    final canvas = html.CanvasElement(
+      width: _videoElement!.videoWidth,
+      height: _videoElement!.videoHeight,
+    );
+
+    final context = canvas.context2D;
+    context.drawImageScaled(_videoElement!, 0, 0,
+        canvas.width!, canvas.height!);
+
+    final blob = await canvas.toBlob('image/png');
+    final reader = html.FileReader();
+    reader.readAsArrayBuffer(blob);
+    await reader.onLoadEnd.first;
+
+    final bytes = reader.result as Uint8List;
+    widget.onImageCaptured(bytes);
+
+    _dispose();
+  }
+
+  void _dispose() {
+    _stream?.getTracks().forEach((track) => track.stop());
+    _videoElement?.remove();
+  }
+
+  @override
+  void dispose() {
+    _dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('カメラ撮影'),
+      content: Container(
+        width: 400,
+        height: 300,
+        color: Colors.black,
+        child: const Center(
+          child: Text(
+            'カメラプレビュー',
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            _dispose();
+            Navigator.of(context).pop();
+          },
+          child: const Text('キャンセル'),
+        ),
+        ElevatedButton(
+          onPressed: _captureImage,
+          child: const Text('撮影'),
+        ),
+      ],
     );
   }
 }

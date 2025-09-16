@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -65,16 +65,16 @@ final GoRouter appRouter = GoRouter(
           );
         }
 
-        final imageFile = extra['imageFile'] as File?;
+        final imageBytes = extra['imageBytes'] as Uint8List?;
         final detection = extra['detection'] as DetectionResult?;
 
-        if (imageFile == null || detection == null) {
+        if (detection == null) {
           return const Scaffold(
             body: Center(child: Text('Missing required parameters')),
           );
         }
 
-        return ResultScreen(imageFile: imageFile, detection: detection);
+        return ResultScreen(imageBytes: imageBytes, detection: detection);
       },
     ),
 
