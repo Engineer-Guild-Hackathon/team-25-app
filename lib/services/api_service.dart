@@ -7,7 +7,7 @@ import '../models/molecule.dart';
 
 class ApiService {
   // Gemini API（Google AI Studio）の設定
-  static const String _apiKey = 'AIzaSyAcAgyzLJ2tTKTMlualOns8TnJP4Zp_U9A';
+  static const String _apiKey = 'AIzaSyAzYfM9MZc7D0xRuC9HxaMfx3f5KY6xqk0';
   static const String _geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
   static final Dio _dio = Dio()
@@ -16,17 +16,29 @@ class ApiService {
     ..options.sendTimeout = const Duration(seconds: 60);
 
   static Future<DetectionResult> analyzeImage(Uint8List imageBytes, String? mimeType) async {
-    try {
-      debugPrint('Sending image to Gemini API');
+    const int maxRetries = 5;
+    int attempt = 0;
 
-      // Base64エンコード
-      final base64Image = base64Encode(imageBytes);
+    // 画像サイズ制限（4MB以下に圧縮）
+    Uint8List processedImageBytes = imageBytes;
+    if (imageBytes.length > 4 * 1024 * 1024) {
+      debugPrint('Image too large (${imageBytes.length} bytes), truncating...');
+      processedImageBytes = imageBytes.sublist(0, 4 * 1024 * 1024);
+    }
 
-      // MIMEタイプを決定
-      String finalMimeType = mimeType ?? 'image/jpeg';
-      if (finalMimeType == 'application/octet-stream') {
-        finalMimeType = 'image/jpeg';
-      }
+    while (attempt < maxRetries) {
+      attempt++;
+      try {
+        debugPrint('Sending image to Gemini API (attempt $attempt/$maxRetries)');
+
+        // Base64エンコード
+        final base64Image = base64Encode(processedImageBytes);
+
+        // MIMEタイプを決定
+        String finalMimeType = mimeType ?? 'image/jpeg';
+        if (finalMimeType == 'application/octet-stream') {
+          finalMimeType = 'image/jpeg';
+        }
 
       // Gemini APIリクエストボディ
       final requestBody = {
@@ -60,8 +72,8 @@ class ApiService {
           },
         ],
         'generationConfig': {
-          'temperature': 0.3,
-          'maxOutputTokens': 1000,
+          'temperature': 0.1,
+          'maxOutputTokens': 8192,
         },
       };
 
@@ -83,44 +95,55 @@ class ApiService {
         ),
       );
 
-      if (response.statusCode == 200) {
-        // Gemini APIのレスポンスを解析してDetectionResultに変換
-        return await _parseGeminiResponse(response.data);
-      } else if (response.statusCode == 503) {
-        debugPrint('Gemini API 503 Error Details:');
-        debugPrint('Status: ${response.statusCode}');
-        debugPrint('Status Message: ${response.statusMessage}');
-        debugPrint('Response Headers: ${response.headers}');
-        debugPrint('Response Data: ${response.data}');
-        throw Exception('Gemini API temporarily unavailable (503): ${response.data}');
-      } else {
-        debugPrint('Gemini API Error: ${response.statusCode} - ${response.statusMessage}');
-        debugPrint('Response Data: ${response.data}');
-        throw Exception('Gemini API error: ${response.statusCode} ${response.statusMessage}');
-      }
-    } on DioException catch (e) {
-      debugPrint('DioException Details:');
-      debugPrint('Type: ${e.type}');
-      debugPrint('Message: ${e.message}');
-      debugPrint('Response Status: ${e.response?.statusCode}');
-      debugPrint('Response Data: ${e.response?.data}');
-      debugPrint('Request Path: ${e.requestOptions.path}');
+        if (response.statusCode == 200) {
+          // Gemini APIのレスポンスを解析してDetectionResultに変換
+          return await _parseGeminiResponse(response.data);
+        } else {
+          throw Exception('Gemini API error: ${response.statusCode} ${response.statusMessage}');
+        }
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 503 && attempt < maxRetries) {
+          debugPrint('API overloaded (503), retrying in ${attempt * 3} seconds...');
+          await Future.delayed(Duration(seconds: attempt * 3));
+          continue;
+        }
+        if (e.response?.statusCode == 429 && attempt < maxRetries) {
+          debugPrint('Rate limit exceeded (429), retrying in ${attempt * 5} seconds...');
+          await Future.delayed(Duration(seconds: attempt * 5));
+          continue;
+        }
 
-      if (e.response?.statusCode == 503) {
-        throw Exception('Gemini API server overloaded (503). Response: ${e.response?.data}');
-      } else if (e.type == DioExceptionType.connectionTimeout) {
-        throw Exception('Connection timeout to Gemini API');
-      } else if (e.type == DioExceptionType.sendTimeout) {
-        throw Exception('Send timeout to Gemini API');
-      } else if (e.type == DioExceptionType.receiveTimeout) {
-        throw Exception('Receive timeout from Gemini API');
-      } else {
-        throw Exception('Network error: ${e.type} - ${e.message}');
+        debugPrint('DioException Details:');
+        debugPrint('Type: ${e.type}');
+        debugPrint('Message: ${e.message}');
+        debugPrint('Response Status: ${e.response?.statusCode}');
+        debugPrint('Response Data: ${e.response?.data}');
+
+        if (e.response?.statusCode == 503) {
+          throw Exception('Gemini API temporarily unavailable. Please try again later.');
+        } else if (e.response?.statusCode == 429) {
+          throw Exception('API rate limit exceeded. Please try again later.');
+        } else if (e.type == DioExceptionType.connectionTimeout) {
+          throw Exception('Connection timeout to Gemini API');
+        } else if (e.type == DioExceptionType.sendTimeout) {
+          throw Exception('Send timeout to Gemini API');
+        } else if (e.type == DioExceptionType.receiveTimeout) {
+          throw Exception('Receive timeout from Gemini API');
+        } else {
+          throw Exception('Network error: ${e.type} - ${e.message}');
+        }
+      } catch (e) {
+        if (attempt < maxRetries) {
+          debugPrint('Unexpected error, retrying: $e');
+          await Future.delayed(Duration(seconds: attempt * 2));
+          continue;
+        }
+        debugPrint('Unexpected error: $e');
+        throw Exception('An unexpected error occurred: $e');
       }
-    } catch (e) {
-      debugPrint('Unexpected error: $e');
-      throw Exception('An unexpected error occurred: $e');
     }
+
+    throw Exception('Failed to analyze image after $maxRetries attempts');
   }
 
   // Gemini APIのレスポンスを解析してDetectionResultに変換
@@ -247,10 +270,13 @@ class ApiService {
         '酸素': 977,
         '窒素': 947,
         'アンモニア': 222,
-        'セルロース': 16760691,
+        // 'セルロース': 16760691, // モック処理に変更
         'クロロフィルa': 439796,
         'クロロフィルb': 439798,
+        'クロロフィル': 156620228,
         'カロテノイド': 5280489, // β-カロテン
+        'リコピン': 446925, // リコピンの正しいCID
+        'β-カロテン': 5280489,
       };
 
       final knownCid = knownMolecules[moleculeName.toLowerCase()];
@@ -306,10 +332,12 @@ class ApiService {
       'クロロフィル': 'chlorophyll',
       'クロロフィルa': 'chlorophyll a',
       'クロロフィルb': 'chlorophyll b',
-      'セルロース': 'cellulose',
+      // 'セルロース': 'cellulose', // モック処理に変更
       'デンプン': 'starch',
       'リグニン': 'lignin',
       'カロテノイド': 'carotenoid',
+      'リコピン': 'lycopene',
+      'β-カロテン': 'beta-carotene',
       'カフェイン': 'caffeine',
       'フルクトース': 'fructose',
       'グルコース': 'glucose',
@@ -575,6 +603,8 @@ class ApiService {
         'mock_oxygen_sdf_data': 977,
         'mock_nitrogen_sdf_data': 947,
         'mock_ammonia_sdf_data': 222,
+        'mock_セルロース_sdf_data': 5793, // グルコース（C6H12O6 - 6個の炭素）
+        'mock_デンプン_sdf_data': 5793, // グルコース（C6H12O6 - 6個の炭素）
       };
 
       final cid = mockToCidMap[sdfIdentifier];
@@ -611,7 +641,8 @@ class ApiService {
       'mock_oxygen_sdf_data': 977,
       'mock_nitrogen_sdf_data': 947,
       'mock_ammonia_sdf_data': 222,
-      'mock_セルロース_sdf_data': 16760691,
+      'mock_セルロース_sdf_data': 5793, // グルコース（C6H12O6 - 6個の炭素）
+      'mock_デンプン_sdf_data': 5793, // グルコース（C6H12O6 - 6個の炭素）
       'mock_クロロフィルa_sdf_data': 439796,
       'mock_クロロフィルb_sdf_data': 439798,
       'mock_カロテノイド_sdf_data': 5280489,

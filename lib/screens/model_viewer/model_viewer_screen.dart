@@ -324,20 +324,20 @@ class _ModelViewerScreenState extends State<ModelViewerScreen> {
       return [];
     }
 
-    // 原子記号と色のマップ（3Dモデルの色と統一）
+    // 原子記号と色のマップ（より濃い色調で統一）
     final Map<String, Map<String, dynamic>> atomColors = {
-      'H': {'name': 'H (水素)', 'color': const Color(0xFFFFFFFF), 'textColor': Colors.grey}, // 白
-      'C': {'name': 'C (炭素)', 'color': const Color(0xFF000000), 'textColor': Colors.white}, // 黒
-      'N': {'name': 'N (窒素)', 'color': const Color(0xFF0066FF), 'textColor': Colors.white}, // 青
-      'O': {'name': 'O (酸素)', 'color': const Color(0xFFFF0000), 'textColor': Colors.white}, // 赤
-      'P': {'name': 'P (リン)', 'color': const Color(0xFFFF8000), 'textColor': Colors.white}, // オレンジ
-      'S': {'name': 'S (硫黄)', 'color': const Color(0xFFFFFF00), 'textColor': Colors.black}, // 黄色
-      'Mg': {'name': 'Mg (マグネシウム)', 'color': const Color(0xFF00FF00), 'textColor': Colors.black}, // 緑
-      'Ca': {'name': 'Ca (カルシウム)', 'color': const Color(0xFFDDDDDD), 'textColor': Colors.black}, // 薄いグレー
-      'Fe': {'name': 'Fe (鉄)', 'color': const Color(0xFFFF8000), 'textColor': Colors.white}, // オレンジ
-      'K': {'name': 'K (カリウム)', 'color': const Color(0xFF8F00FF), 'textColor': Colors.white}, // 紫
-      'Na': {'name': 'Na (ナトリウム)', 'color': const Color(0xFF0000FF), 'textColor': Colors.white}, // 青
-      'Cl': {'name': 'Cl (塩素)', 'color': const Color(0xFF00FF00), 'textColor': Colors.black}, // 緑
+      'H': {'name': 'H (水素)', 'color': const Color(0xFFD0D0D0), 'textColor': Colors.black}, // 濃いグレー
+      'C': {'name': 'C (炭素)', 'color': const Color(0xFF404040), 'textColor': Colors.white}, // より濃いグレー
+      'N': {'name': 'N (窒素)', 'color': const Color(0xFF1976D2), 'textColor': Colors.white}, // 濃い青色
+      'O': {'name': 'O (酸素)', 'color': const Color(0xFFD32F2F), 'textColor': Colors.white}, // 濃い赤色
+      'P': {'name': 'P (リン)', 'color': const Color(0xFFFF6F00), 'textColor': Colors.white}, // 濃いオレンジ
+      'S': {'name': 'S (硫黄)', 'color': const Color(0xFFF9A825), 'textColor': Colors.black}, // 濃い黄色
+      'Mg': {'name': 'Mg (マグネシウム)', 'color': const Color(0xFF388E3C), 'textColor': Colors.white}, // 濃い緑色
+      'Ca': {'name': 'Ca (カルシウム)', 'color': const Color(0xFFBDBDBD), 'textColor': Colors.black}, // グレー
+      'Fe': {'name': 'Fe (鉄)', 'color': const Color(0xFF8D6E63), 'textColor': Colors.white}, // 茶色
+      'K': {'name': 'K (カリウム)', 'color': const Color(0xFF7B1FA2), 'textColor': Colors.white}, // 濃い紫色
+      'Na': {'name': 'Na (ナトリウム)', 'color': const Color(0xFF303F9F), 'textColor': Colors.white}, // 濃い青紫色
+      'Cl': {'name': 'Cl (塩素)', 'color': const Color(0xFF43A047), 'textColor': Colors.white}, // 濃い緑色
     };
 
     // 化学式から原子記号を抽出

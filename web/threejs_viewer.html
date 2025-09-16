@@ -82,6 +82,9 @@
     <script>
         let scene, camera, renderer, controls, model;
         let moleculeName = 'Unknown Molecule';
+        let frameCount = 0;
+        let lastGCTime = Date.now();
+        const GC_INTERVAL = 30000; // 30秒ごとにガベージコレクション
 
         // URLパラメータから分子情報を取得
         const urlParams = new URLSearchParams(window.location.search);
@@ -97,26 +100,38 @@
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, 0, 5);
 
-            // レンダラーの作成
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            // レンダラーの作成（品質とパフォーマンスのバランス）
+            renderer = new THREE.WebGLRenderer({
+                antialias: true, // アンチエイリアシング有効で滑らかに
+                alpha: false, // アルファチャンネル無効でパフォーマンス維持
+                powerPreference: "high-performance",
+                precision: "mediump", // 中程度の精度で品質向上
+                stencil: false, // ステンシルバッファ無効
+                depth: true, // デプスバッファは必要
+                preserveDrawingBuffer: false // フレームバッファ保持無効
+            });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-            renderer.outputEncoding = THREE.sRGBEncoding;
-            renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 1;
+            renderer.shadowMap.enabled = false; // 影を無効
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // ピクセル比を少し上げる
+
+            // 追加のパフォーマンス設定
+            renderer.info.autoReset = false; // レンダリング統計のリセット無効
+            renderer.sortObjects = false; // オブジェクトソート無効でパフォーマンス向上
 
             document.getElementById('container').appendChild(renderer.domElement);
 
-            // コントロールの設定
+            // コントロールの設定（最大パフォーマンス重視）
             controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
+            controls.enableDamping = false; // ダンピング無効でパフォーマンス向上
+            controls.enablePan = false; // パン無効
+            controls.enableZoom = true; // ズームのみ有効
+            controls.enableRotate = true; // 回転のみ有効
             controls.screenSpacePanning = false;
-            controls.minDistance = 1;
-            controls.maxDistance = 100;
+            controls.minDistance = 0.5;
+            controls.maxDistance = 20; // 最大距離をさらに制限
             controls.autoRotate = false;
-            controls.autoRotateSpeed = 0;
+            controls.rotateSpeed = 0.5; // 回転速度を下げる
+            controls.zoomSpeed = 0.5; // ズーム速度を下げる
 
             // ライティングの設定
             setupLighting();
@@ -126,27 +141,15 @@
         }
 
         function setupLighting() {
-            // 環境光
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            // バランスの取れたライティング
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7); // 環境光を少し下げる
             scene.add(ambientLight);
 
-            // 主要な方向光
-            const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight1.position.set(5, 5, 5);
-            directionalLight1.castShadow = true;
-            directionalLight1.shadow.mapSize.width = 1024;
-            directionalLight1.shadow.mapSize.height = 1024;
-            scene.add(directionalLight1);
-
-            // 補助光
-            const directionalLight2 = new THREE.DirectionalLight(0x87CEEB, 0.4);
-            directionalLight2.position.set(-5, -5, -5);
-            scene.add(directionalLight2);
-
-            // ポイントライト
-            const pointLight = new THREE.PointLight(0xffffff, 0.5);
-            pointLight.position.set(0, 10, 0);
-            scene.add(pointLight);
+            // 軽量な方向光を1つだけ追加（立体感を向上）
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.3);
+            directionalLight.position.set(2, 2, 2);
+            directionalLight.castShadow = false; // 影は無効
+            scene.add(directionalLight);
         }
 
         function loadModel(url) {
@@ -165,53 +168,100 @@
                     // モデルを中央に配置
                     model.position.sub(center);
 
-                    // サイズを正規化（さらに大きく表示するために拡大率を増加）
+                    // サイズを正規化（初期表示を大きくするために拡大率を増加）
                     const maxDim = Math.max(size.x, size.y, size.z);
-                    const scale = 6 / maxDim; // 4から6に変更してさらに大きく表示
+                    const scale = 8 / maxDim; // 6から8に変更してより大きく表示
                     model.scale.setScalar(scale);
 
-                    // マテリアルの設定と色調整
+                    // マテリアルの設定と色調整（パフォーマンス最適化）
                     model.traverse((child) => {
                         if (child.isMesh) {
-                            child.castShadow = true;
-                            child.receiveShadow = true;
+                            child.castShadow = false; // 影を無効でパフォーマンス向上
+                            child.receiveShadow = false;
+                            child.frustumCulled = true; // フラスタムカリング有効
 
-                            // マテリアルの改善と色の調整
+                            // マテリアルの改善と色の調整（最大パフォーマンス重視）
                             if (child.material) {
-                                child.material.metalness = 0.1;
-                                child.material.roughness = 0.3;
-                                child.material.envMapIntensity = 1.0;
+                                // 元の色を保存
+                                const originalColor = child.material.color ? child.material.color.clone() : new THREE.Color(0xffffff);
 
-                                // 原子の色を識別してUI色分けと合わせる
+                                // BasicMaterialに置き換えてGPU負荷を大幅削減
+                                child.material = new THREE.MeshBasicMaterial({
+                                    color: originalColor,
+                                    transparent: false,
+                                    fog: false,
+                                    vertexColors: false
+                                });
+                                child.material.needsUpdate = false; // 更新処理を無効
+
+                                // 原子の色を識別してUI色分けと合わせる（より濃い色調）
                                 const materialColor = child.material.color;
                                 if (materialColor) {
-                                    // 炭素（黒）
-                                    if (materialColor.r < 0.3 && materialColor.g < 0.3 && materialColor.b < 0.3) {
-                                        materialColor.setHex(0x000000); // 黒
+                                    console.log('Original atom color:', materialColor.r.toFixed(3), materialColor.g.toFixed(3), materialColor.b.toFixed(3));
+
+                                    // 炭素（より濃いグレー）- 暗い色全般
+                                    if (materialColor.r < 0.4 && materialColor.g < 0.4 && materialColor.b < 0.4) {
+                                        materialColor.setHex(0x404040);
+                                        console.log('Detected Carbon');
                                     }
-                                    // 酸素（赤）
-                                    else if (materialColor.r > 0.7 && materialColor.g < 0.3 && materialColor.b < 0.3) {
-                                        materialColor.setHex(0xFF0000); // 赤
+                                    // 酸素（濃い赤色）- 赤っぽい色
+                                    else if (materialColor.r > 0.6 && materialColor.g < 0.5 && materialColor.b < 0.5) {
+                                        materialColor.setHex(0xD32F2F);
+                                        console.log('Detected Oxygen');
                                     }
-                                    // 窒素（青）
-                                    else if (materialColor.r < 0.3 && materialColor.g < 0.5 && materialColor.b > 0.7) {
-                                        materialColor.setHex(0x0066FF); // 青
+                                    // 窒素（濃い青色）- 青っぽい色
+                                    else if (materialColor.r < 0.5 && materialColor.g < 0.6 && materialColor.b > 0.6) {
+                                        materialColor.setHex(0x1976D2);
+                                        console.log('Detected Nitrogen');
                                     }
-                                    // 水素（白/グレー）
-                                    else if (materialColor.r > 0.8 && materialColor.g > 0.8 && materialColor.b > 0.8) {
-                                        materialColor.setHex(0xFFFFFF); // 白
+                                    // 水素（濃いグレー）- 明るいグレー/白っぽい色
+                                    else if (materialColor.r > 0.7 && materialColor.g > 0.7 && materialColor.b > 0.7 &&
+                                             Math.abs(materialColor.r - materialColor.g) < 0.15 && Math.abs(materialColor.g - materialColor.b) < 0.15) {
+                                        materialColor.setHex(0xD0D0D0);
+                                        console.log('Detected Hydrogen');
                                     }
-                                    // マグネシウム（緑）
-                                    else if (materialColor.r < 0.3 && materialColor.g > 0.7 && materialColor.b < 0.3) {
-                                        materialColor.setHex(0x00FF00); // 緑
+                                    // マグネシウム（緑色）- クロロフィル特有の厳密条件
+                                    else if (materialColor.r < 0.6 && materialColor.g > 0.7 && materialColor.b < 0.6 &&
+                                             materialColor.g > materialColor.r * 1.3 && materialColor.g > materialColor.b * 1.2) {
+                                        materialColor.setHex(0x388E3C); // 濃い緑色（マグネシウム）
+                                        console.log('Detected Magnesium');
                                     }
-                                    // 硫黄（黄色）
-                                    else if (materialColor.r > 0.8 && materialColor.g > 0.8 && materialColor.b < 0.3) {
-                                        materialColor.setHex(0xFFFF00); // 黄色
+                                    // 硫黄（濃い黄色）- 黄色系
+                                    else if (materialColor.r > 0.7 && materialColor.g > 0.7 && materialColor.b < 0.5) {
+                                        materialColor.setHex(0xF9A825);
+                                        console.log('Detected Sulfur');
                                     }
-                                    // リン（オレンジ）
-                                    else if (materialColor.r > 0.8 && materialColor.g > 0.4 && materialColor.b < 0.3) {
-                                        materialColor.setHex(0xFF8000); // オレンジ
+                                    // リン（濃いオレンジ）- オレンジ系
+                                    else if (materialColor.r > 0.8 && materialColor.g > 0.4 && materialColor.g < 0.7 && materialColor.b < 0.4) {
+                                        materialColor.setHex(0xFF6F00);
+                                        console.log('Detected Phosphorus');
+                                    }
+                                    // 塩素（濃い緑色）- 純粋な緑色系
+                                    else if (materialColor.r < 0.4 && materialColor.g > 0.6 && materialColor.b < 0.4 &&
+                                             materialColor.g > materialColor.r * 1.8 && materialColor.g > materialColor.b * 1.8) {
+                                        materialColor.setHex(0x43A047);
+                                        console.log('Detected Chlorine');
+                                    }
+                                    // 鉄（茶色）- 茶色系
+                                    else if (materialColor.r > 0.5 && materialColor.g > 0.3 && materialColor.g < materialColor.r && materialColor.b < 0.4) {
+                                        materialColor.setHex(0x8D6E63);
+                                        console.log('Detected Iron');
+                                    }
+                                    // カリウム（濃い紫色）- 紫系
+                                    else if (materialColor.r > 0.5 && materialColor.g < 0.4 && materialColor.b > 0.6 && materialColor.b > materialColor.r) {
+                                        materialColor.setHex(0x7B1FA2);
+                                        console.log('Detected Potassium');
+                                    }
+                                    // ナトリウム（濃い青紫色）- 青紫系
+                                    else if (materialColor.r < 0.5 && materialColor.g < 0.5 && materialColor.b > 0.6 && materialColor.b > materialColor.r && materialColor.b > materialColor.g) {
+                                        materialColor.setHex(0x303F9F);
+                                        console.log('Detected Sodium');
+                                    }
+                                    // カルシウム（グレー）- 中程度のグレー
+                                    else if (materialColor.r > 0.5 && materialColor.r < 0.8 && materialColor.g > 0.5 && materialColor.g < 0.8 && materialColor.b > 0.5 && materialColor.b < 0.8 &&
+                                             Math.abs(materialColor.r - materialColor.g) < 0.1 && Math.abs(materialColor.g - materialColor.b) < 0.1) {
+                                        materialColor.setHex(0xBDBDBD);
+                                        console.log('Detected Calcium');
                                     }
                                 }
                             }
@@ -220,8 +270,8 @@
 
                     scene.add(model);
 
-                    // カメラ位置を調整（さらに近づける）
-                    const distance = Math.max(2.5, maxDim * scale * 1.0); // さらに近づける
+                    // カメラ位置を調整（初期表示用に近づける）
+                    const distance = Math.max(2.0, maxDim * scale * 0.8); // より近づける
                     camera.position.set(distance, distance * 0.5, distance);
                     controls.target.copy(model.position);
                     controls.update();
@@ -250,9 +300,42 @@
 
         function animate() {
             requestAnimationFrame(animate);
+
+            // 中程度のフレームレート制限（45fps）で品質とパフォーマンスのバランス
+            frameCount++;
+            if (frameCount % 4 < 3) return; // 4フレームに3回レンダリング（約45fps）
+
             controls.update();
             renderer.render(scene, camera);
+
+            // より頻繁なメモリクリーンアップ（15秒間隔）
+            const now = Date.now();
+            if (now - lastGCTime > 15000) {
+                if (window.gc) {
+                    window.gc();
+                }
+                // レンダリング統計をリセット
+                renderer.info.reset();
+                lastGCTime = now;
+                console.log('Aggressive memory cleanup performed');
+            }
         }
+
+        // ページがアンロードされるときのクリーンアップ
+        window.addEventListener('beforeunload', function() {
+            if (renderer) {
+                renderer.dispose();
+            }
+            if (scene) {
+                scene.traverse((child) => {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) {
+                        if (child.material.map) child.material.map.dispose();
+                        child.material.dispose();
+                    }
+                });
+            }
+        });
 
         // 初期化とモデル読み込み
         init();
